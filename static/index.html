@@ -412,6 +412,14 @@
   tr.err-highlight td{background:rgba(198,40,40,0.03)!important;}
   .product-line.line-exhausted{opacity:0.5;}
   .product-line input[type=number]:disabled{background:#f0f0f0;color:#bbb;cursor:not-allowed;border-color:#ddd;}
+  /* Mode picker */
+  .mode-picker{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px;}
+  .mode-btn{background:var(--surface);border:2px solid var(--border);border-radius:10px;padding:18px 20px;cursor:pointer;text-align:left;transition:border-color 0.15s,background 0.15s;width:100%;}
+  .mode-btn:hover{border-color:var(--navy-light);background:var(--bg2);}
+  .mode-btn.active{border-color:var(--navy);background:var(--bg2);}
+  .mode-btn-icon{font-size:28px;margin-bottom:8px;}
+  .mode-btn-label{font-weight:700;font-size:15px;color:var(--navy);margin-bottom:4px;}
+  .mode-btn-sub{font-size:12px;color:var(--muted);line-height:1.4;}
   .err-box{
     background:#FFF5F5;border:1.5px solid rgba(198,40,40,0.35);
     color:var(--danger);border-radius:8px;
@@ -489,6 +497,21 @@
 
   <!-- ══ STEP 1: UPLOAD ══ -->
   <div id="uploadSection">
+
+    <!-- Mode picker -->
+    <div class="mode-picker" id="modePicker">
+      <button class="mode-btn mode-btn-full active" id="modeBtnFull" onclick="selectMode('full')">
+        <div class="mode-btn-icon">📄</div>
+        <div class="mode-btn-label">Full Invoice + LP</div>
+        <div class="mode-btn-sub">Upload MARG PDF → generate Invoice Excel + LP Excel</div>
+      </button>
+      <button class="mode-btn mode-btn-lp" id="modeBtnLP" onclick="selectMode('lp')">
+        <div class="mode-btn-icon">🏷️</div>
+        <div class="mode-btn-label">LP Only</div>
+        <div class="mode-btn-sub">Enter customer addresses → generate LP Excel only</div>
+      </button>
+    </div>
+
     <div class="upload-zone" id="uploadZone">
       <input type="file" id="pdfInput" accept=".pdf" />
       <div class="upload-icon">📄</div>
@@ -560,7 +583,7 @@
   <!-- ══ STEP 3: PACKING LIST ══ -->
   <div id="packingSection" class="hidden">
 
-    <div class="section">
+    <div class="section" id="buyerDetailsSection">
       <div class="section-header"><span class="section-title">Buyer Details (from PDF)</span></div>
       <div class="meta-grid" style="grid-template-columns:1fr 2fr;">
         <div class="field">
@@ -584,13 +607,13 @@
         <span class="badge" id="custCount">0</span>
       </div>
 
-      <div class="inv-bar">
+      <div class="inv-bar" id="invBarSection">
         <div class="inv-bar-title">📦 Invoice Inventory — Remaining Strips</div>
         <div class="inv-items" id="inventoryList"></div>
         <div id="allocSummary" style="margin-top:10px;font-size:12px;color:var(--muted);line-height:1.8;"></div>
       </div>
 
-      <div class="bulk-wrap">
+      <div class="bulk-wrap" id="bulkImportSection">
         <div class="bulk-wrap-title">⚡ Bulk Import Customers</div>
         <div class="bulk-wrap-sub">
           One customer per block · Blank line between customers<br>
@@ -618,7 +641,8 @@
     <div id="packingErrors"></div>
 
     <div class="action-bar">
-      <button class="btn btn-outline" onclick="backToInvoice()">← Back</button>
+      <button class="btn btn-outline" id="backToInvoiceBtn" onclick="backToInvoice()">← Back</button>
+      <button class="btn btn-outline" id="backToModeBtn" style="display:none" onclick="resetApp()">← Back to Start</button>
       <div class="spacer"></div>
       <button class="btn btn-success" id="generateBtn" onclick="generateExcel()">⬇ Invoice Excel</button>
       <button class="btn btn-primary" id="generateLpBtn" onclick="generateLP()">⬇ LP Excel</button>
@@ -632,6 +656,7 @@
 <script>
 
 let parsedData = null;
+let lpOnlyMode = false;  // true = LP Only mode (no PDF, no invoice, just address → LP Excel)
 // customers: [{name, addr1, city, state, zip, country, weight, declared_value, tracking, lines:[{productKey, qty, pills_per_strip}]}]
 // productKey = "PRODUCT NAME||BATCH" to distinguish duplicates
 let customers = [];
@@ -1743,6 +1768,46 @@ async function generateLP() {
 }
 
 // ── Helpers ───────────────────────────────────
+function selectMode(mode) {
+  lpOnlyMode = (mode === 'lp');
+  document.getElementById('modeBtnFull').classList.toggle('active', !lpOnlyMode);
+  document.getElementById('modeBtnLP').classList.toggle('active',  lpOnlyMode);
+  // Show/hide upload zone based on mode
+  document.getElementById('uploadZone').style.display = lpOnlyMode ? 'none' : '';
+  document.getElementById('parseBtn').style.display   = lpOnlyMode ? 'none' : '';
+  document.getElementById('parseSpinner').style.display = 'none';
+  // If LP Only: jump straight to packing list with no PDF data
+  if (lpOnlyMode) {
+    parsedData = null;
+    customers  = [];
+    enterLPOnlyPackingSection();
+  }
+}
+
+function enterLPOnlyPackingSection() {
+  // In LP Only mode we skip steps 2 (invoice) and go straight to step 3 (packing list)
+  document.getElementById('uploadSection').classList.add('hidden');
+  // Hide buyer-details section (it's derived from PDF in full mode) 
+  document.getElementById('packingSection').classList.remove('hidden');
+  // Hide inventory bar and bulk import — not relevant in LP Only mode
+  toggleLPOnlyVisibility(true);
+  setStep(3);
+  // Ensure customer cards re-render
+  renderCustomers();
+}
+
+function toggleLPOnlyVisibility(isLpOnly) {
+  // Hide elements only needed for full-invoice mode
+  ['invBarSection','bulkImportSection','buyerDetailsSection','backToInvoiceBtn',
+   'generateBtn','inventoryList','allocSummary'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isLpOnly ? 'none' : '';
+  });
+  // Show/hide LP-only back button
+  const backLPBtn = document.getElementById('backToModeBtn');
+  if (backLPBtn) backLPBtn.style.display = isLpOnly ? '' : 'none';
+}
+
 function setStep(n) {
   document.querySelectorAll('.step').forEach((s, i) => {
     s.classList.remove('active','done');
@@ -1752,15 +1817,22 @@ function setStep(n) {
 }
 
 function resetApp() {
-  parsedData = null; customers = [];
-  pdfInput.value = '';
-  filenameLabel.classList.add('hidden'); filenameLabel.textContent = '';
-  parseBtn.disabled = true;
+  parsedData = null; customers = []; lpOnlyMode = false;
+  if (pdfInput) { pdfInput.value = ''; }
+  if (filenameLabel) { filenameLabel.classList.add('hidden'); filenameLabel.textContent = ''; }
+  if (parseBtn) { parseBtn.disabled = true; }
   ['invoiceSection','packingSection'].forEach(id => document.getElementById(id).classList.add('hidden'));
   document.getElementById('uploadSection').classList.remove('hidden');
   document.getElementById('customerCards').innerHTML = '';
   document.getElementById('invoiceErrors').innerHTML = '';
   document.getElementById('packingErrors').innerHTML = '';
+  // Reset mode picker
+  document.getElementById('modeBtnFull').classList.add('active');
+  document.getElementById('modeBtnLP').classList.remove('active');
+  document.getElementById('uploadZone').style.display = '';
+  document.getElementById('parseBtn').style.display   = '';
+  // Restore visibility of full-mode sections
+  toggleLPOnlyVisibility(false);
   setStep(1);
 }
 </script>
