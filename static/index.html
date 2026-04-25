@@ -1559,11 +1559,11 @@ function renderCustomerCards() {
               oninput="onCustAddrChange(${ci},'weight',this.value)" />
           </div>
           <div class="field">
-            <label>Declared Value ₹ ✱ <span id="dv-badge-${ci}" class="${dvManual[ci] ? 'dv-manual-badge' : 'dv-auto-badge'}">${dvManual[ci] ? '✎ edited' : '⟳ auto'}</span></label>
+            <label>Declared Value $ ✱ ${lpOnlyMode ? '' : `<span id="dv-badge-${ci}" class="${dvManual[ci] ? 'dv-manual-badge' : 'dv-auto-badge'}">${dvManual[ci] ? '✎ edited' : '⟳ auto'}</span>`}</label>
             <div class="dv-wrap">
-              <input type="number" id="cust-dv-${ci}" value="${cust.declared_value||0}" min="0" step="1" placeholder="0"
+              <input type="number" id="cust-dv-${ci}" value="${cust.declared_value||0}" min="0" step="0.01" placeholder="0"
                 oninput="onDvInput(${ci},this.value)" />
-              <button class="btn-dv-reset" title="Reset to auto-calculated" onclick="resetDv(${ci})">↺</button>
+              ${lpOnlyMode ? '' : `<button class="btn-dv-reset" title="Reset to auto-calculated" onclick="resetDv(${ci})">↺</button>`}
             </div>
           </div>
           <div class="field">
@@ -1573,6 +1573,7 @@ function renderCustomerCards() {
           </div>
         </div>
 
+        ${lpOnlyMode ? '' : `
         <div class="product-lines-header">
           <div>Product (Batch)</div>
           <div>Qty (strips)</div>
@@ -1584,6 +1585,7 @@ function renderCustomerCards() {
           ${linesHtml}
         </div>
         <button class="btn btn-add btn-sm" style="margin-top:8px" onclick="addProductLine(${ci})">+ Add Product</button>
+        `}
       </div>
     </div>`;
   }).join('');
@@ -1619,7 +1621,7 @@ async function generateExcel() {
     if (!cust.country?.trim()) custErrors.push(`Customer ${n}: Country is required.`);
     // weight=0 accepted
     if (cust.weight === null || cust.weight === undefined) customers[ci].weight = 0;
-    if (cust.country === 'United States') {
+    if (!lpOnlyMode && cust.country === 'United States') {
       if (!(parseFloat(cust.declared_value) > 0)) custErrors.push(`Customer ${n}: Declared Value is required for United States shipments — please enter manually.`);
     } else {
       if (cust.declared_value === '' || cust.declared_value === null || cust.declared_value === undefined) {
@@ -1735,7 +1737,7 @@ async function generateLP() {
   }));
 
   const payload = {
-    invoice_no: document.getElementById('invNo').value,
+    invoice_no: lpOnlyMode ? '' : (document.getElementById('invNo')?.value || ''),
     customers: custPayload
   };
 
@@ -1798,7 +1800,7 @@ function enterLPOnlyPackingSection() {
 
 function toggleLPOnlyVisibility(isLpOnly) {
   // Hide elements only needed for full-invoice mode
-  ['invBarSection','bulkImportSection','buyerDetailsSection','backToInvoiceBtn',
+  ['invBarSection','buyerDetailsSection','backToInvoiceBtn',
    'generateBtn','inventoryList','allocSummary'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isLpOnly ? 'none' : '';
